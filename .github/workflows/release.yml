@@ -1,0 +1,89 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "image_upload_transit.py"
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for version change
+        id: check
+        run: |
+          VERSION=$(grep -E "^VERSION = " image_upload_transit.py | sed 's/VERSION = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          if git tag | grep -q "^v$VERSION$"; then
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          fi
+
+  release:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ needs.check-version.outputs.version }}" -m "Release v${{ needs.check-version.outputs.version }}"
+          git push origin "v${{ needs.check-version.outputs.version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.check-version.outputs.version }}
+          name: v${{ needs.check-version.outputs.version }}
+          generate_release_notes: true
+
+      - name: Update Homebrew formula
+        run: |
+          VERSION="${{ needs.check-version.outputs.version }}"
+          SHA256=$(sha256sum image_upload_transit.py | cut -d' ' -f1)
+
+          cat > Formula/image-upload-transit.rb << 'FORMULA_EOF'
+          class ImageUploadTransit < Formula
+            desc "CLI tool for uploading images and videos to Transit's CDN"
+            homepage "https://github.com/TransitApp/image-upload-transit"
+            url "https://raw.githubusercontent.com/TransitApp/image-upload-transit/v${VERSION}/image_upload_transit.py"
+            sha256 "${SHA256}"
+            license "MIT"
+
+            depends_on "python@3.11"
+            depends_on "1password-cli"
+
+            def install
+              bin.install "image_upload_transit.py" => "image-upload-transit"
+            end
+
+            test do
+              system "#{bin}/image-upload-transit", "--version"
+            end
+          end
+          FORMULA_EOF
+
+          # Replace variables
+          sed -i "s/\${VERSION}/$VERSION/g" Formula/image-upload-transit.rb
+          sed -i "s/\${SHA256}/$SHA256/g" Formula/image-upload-transit.rb
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/image-upload-transit.rb
+          git commit -m "Update formula for v${VERSION}" || true
+          git push
