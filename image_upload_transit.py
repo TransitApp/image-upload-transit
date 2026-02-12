@@ -17,7 +17,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 CONFIG_DIR = Path.home() / ".config" / "image-upload-transit"
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".heic", ".bmp", ".tiff", ".tif", ".svg"}
@@ -234,22 +234,58 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Upload images/videos to GCS with short transitapp.com URLs",
         prog="image-upload-transit",
+        epilog="""
+Examples:
+  %(prog)s image.png                    Upload a single image
+  %(prog)s *.jpg                        Upload multiple images
+  %(prog)s -s screenshot.png            Upload to staging environment
+  %(prog)s --json photo.jpg             Output result as JSON (for scripting/agents)
+
+JSON Output Format (--json):
+  Success: {"file": "image.png", "url": "https://img.transitapp.com/abc123.png", "success": true}
+  Error:   {"file": "bad.txt", "error": "Unsupported file type", "success": false}
+  Multiple files produce one JSON object per line (JSONL format).
+
+Supported formats: images (jpg, png, gif, webp, avif, heic, bmp, tiff, svg) and videos (mp4, mov, webm).
+Size limits: 25MB for images, 100MB for videos.
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("files", nargs="*", help="Files to upload")
     parser.add_argument("-s", "--staging", action="store_true", help="Use staging environment")
     parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {VERSION}")
+    parser.add_argument("--json", action="store_true", help="Output results as JSON (one object per line, for scripting/agents)")
     parser.add_argument("--refresh-credentials", action="store_true", help="Force re-fetch credentials from 1Password")
 
     args = parser.parse_args()
+
+    def output_result(file: str, url: str = None, err: str = None) -> None:
+        if args.json:
+            result = {"file": file, "success": err is None}
+            if url:
+                result["url"] = url
+            if err:
+                result["error"] = err
+            print(json.dumps(result))
+        elif err:
+            error(err)
+        else:
+            success(f"{file} -> {url}")
 
     if args.refresh_credentials and not args.files:
         try:
             get_credentials(is_staging=args.staging, force_refresh=True)
             env_name = "staging" if args.staging else "production"
-            success(f"Credentials refreshed for {env_name}")
+            if args.json:
+                print(json.dumps({"action": "refresh_credentials", "environment": env_name, "success": True}))
+            else:
+                success(f"Credentials refreshed for {env_name}")
             return 0
         except CredentialsError as e:
-            error(str(e))
+            if args.json:
+                print(json.dumps({"action": "refresh_credentials", "error": str(e), "success": False}))
+            else:
+                error(str(e))
             return 2
 
     if not args.files:
@@ -262,19 +298,22 @@ def main() -> int:
     try:
         credentials = get_credentials(is_staging=args.staging, force_refresh=args.refresh_credentials)
     except CredentialsError as e:
-        error(str(e))
+        if args.json:
+            print(json.dumps({"error": str(e), "success": False}))
+        else:
+            error(str(e))
         return 2
 
     exit_code = 0
     for filepath in args.files:
         try:
             url = upload_file(filepath, bucket, base_url, credentials)
-            success(f"{filepath} -> {url}")
+            output_result(filepath, url=url)
         except ValueError as e:
-            error(str(e))
+            output_result(filepath, err=str(e))
             exit_code = 1
         except CredentialsError as e:
-            error(str(e))
+            output_result(filepath, err=str(e))
             return 2
 
     return exit_code
