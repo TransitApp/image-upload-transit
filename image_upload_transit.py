@@ -19,7 +19,6 @@ from pathlib import Path
 
 VERSION = "1.0.0"
 CONFIG_DIR = Path.home() / ".config" / "image-upload-transit"
-CREDENTIALS_FILE = CONFIG_DIR / "credentials.json"
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".heic", ".bmp", ".tiff", ".tif", ".svg"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm"}
@@ -34,7 +33,8 @@ URL_PROD = "https://img.transitapp.com"
 URL_STAGING = "https://img-staging.transitapp.com"
 
 OP_VAULT = "Shared"
-OP_ITEM = "image-upload-transit Service Account"
+OP_ITEM_PROD = "image-upload-transit Service Account (Production)"
+OP_ITEM_STAGING = "image-upload-transit Service Account (Staging)"
 
 
 class CredentialsError(Exception):
@@ -65,16 +65,20 @@ def check_op_cli() -> None:
         raise CredentialsError("Not signed in to 1Password. Run: op signin")
 
 
-def get_credentials(force_refresh: bool = False) -> dict:
+def get_credentials(is_staging: bool = False, force_refresh: bool = False) -> dict:
     """Fetch credentials from 1Password, caching to file."""
-    if not force_refresh and CREDENTIALS_FILE.exists():
-        with open(CREDENTIALS_FILE) as f:
+    env_name = "staging" if is_staging else "production"
+    credentials_file = CONFIG_DIR / f"credentials-{env_name}.json"
+    op_item = OP_ITEM_STAGING if is_staging else OP_ITEM_PROD
+
+    if not force_refresh and credentials_file.exists():
+        with open(credentials_file) as f:
             return json.load(f)
 
     check_op_cli()
 
     result = subprocess.run(
-        ["op", "item", "get", OP_ITEM, "--vault", OP_VAULT, "--format", "json"],
+        ["op", "item", "get", op_item, "--vault", OP_VAULT, "--format", "json"],
         capture_output=True,
         text=True,
     )
@@ -100,9 +104,9 @@ def get_credentials(force_refresh: bool = False) -> dict:
         raise CredentialsError(f"Missing credential fields: {', '.join(missing)}")
 
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    with open(CREDENTIALS_FILE, "w") as f:
+    with open(credentials_file, "w") as f:
         json.dump(credentials, f, indent=2)
-    os.chmod(CREDENTIALS_FILE, stat.S_IRUSR | stat.S_IWUSR)  # chmod 600
+    os.chmod(credentials_file, stat.S_IRUSR | stat.S_IWUSR)  # chmod 600
 
     return credentials
 
@@ -240,8 +244,9 @@ def main() -> int:
 
     if args.refresh_credentials and not args.files:
         try:
-            get_credentials(force_refresh=True)
-            success("Credentials refreshed")
+            get_credentials(is_staging=args.staging, force_refresh=True)
+            env_name = "staging" if args.staging else "production"
+            success(f"Credentials refreshed for {env_name}")
             return 0
         except CredentialsError as e:
             error(str(e))
@@ -255,7 +260,7 @@ def main() -> int:
     base_url = URL_STAGING if args.staging else URL_PROD
 
     try:
-        credentials = get_credentials(args.refresh_credentials)
+        credentials = get_credentials(is_staging=args.staging, force_refresh=args.refresh_credentials)
     except CredentialsError as e:
         error(str(e))
         return 2
