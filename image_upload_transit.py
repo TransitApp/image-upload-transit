@@ -28,7 +28,7 @@ ALL_EXTENSIONS = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS
 MAX_IMAGE_SIZE = 25 * 1024 * 1024  # 25 MB
 MAX_VIDEO_SIZE = 100 * 1024 * 1024  # 100 MB
 
-BUCKET_PROD = "transit-uploads-prod"
+BUCKET_PROD = "transit-uploads-production"
 BUCKET_STAGING = "transit-uploads-staging"
 URL_PROD = "https://img.transitapp.com"
 URL_STAGING = "https://img-staging.transitapp.com"
