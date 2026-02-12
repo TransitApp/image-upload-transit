@@ -17,7 +17,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 CONFIG_DIR = Path.home() / ".config" / "image-upload-transit"
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".heic", ".bmp", ".tiff", ".tif", ".svg"}
