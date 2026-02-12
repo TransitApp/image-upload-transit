@@ -5,11 +5,15 @@ class ImageUploadTransit < Formula
   sha256 "84dfa621be8def6e099de94dc3740772ee2a874ca216c5321966e7b91fcef310"
   license "MIT"
 
-  depends_on "python@3.11"
-  depends_on "1password-cli"
-
   def install
     bin.install "image_upload_transit.py" => "image-upload-transit"
+  end
+
+  def caveats
+    <<~EOS
+      Requires 1Password CLI (installed via 1Password app or `brew install --cask 1password-cli`)
+      and access to the Transit 1Password Shared vault.
+    EOS
   end
 
   test do

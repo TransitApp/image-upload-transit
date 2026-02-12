@@ -65,11 +65,15 @@ jobs:
             sha256 "${SHA256}"
             license "MIT"
 
-            depends_on "python@3.11"
-            depends_on "1password-cli"
-
             def install
               bin.install "image_upload_transit.py" => "image-upload-transit"
+            end
+
+            def caveats
+              <<~EOS
+                Requires 1Password CLI (installed via 1Password app or `brew install --cask 1password-cli`)
+                and access to the Transit 1Password Shared vault.
+              EOS
             end
 
             test do
