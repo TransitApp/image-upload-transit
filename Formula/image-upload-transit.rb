@@ -1,8 +1,8 @@
 class ImageUploadTransit < Formula
   desc "CLI tool for uploading images and videos to Transit's CDN"
   homepage "https://github.com/TransitApp/image-upload-transit"
-  url "https://raw.githubusercontent.com/TransitApp/image-upload-transit/v1.0.0/image_upload_transit.py"
-  sha256 "84dfa621be8def6e099de94dc3740772ee2a874ca216c5321966e7b91fcef310"
+  url "https://raw.githubusercontent.com/TransitApp/image-upload-transit/v1.1.0/image_upload_transit.py"
+  sha256 "178c649a6aee862194f7ff603ed9372e4853d477efffdc06c11b45de5cc2dba2"
   license "MIT"
 
   def install
