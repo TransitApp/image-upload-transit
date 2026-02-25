@@ -17,7 +17,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 CONFIG_DIR = Path.home() / ".config" / "image-upload-transit"
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".heic", ".bmp", ".tiff", ".tif", ".svg"}
@@ -27,14 +27,11 @@ ALL_EXTENSIONS = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS
 MAX_IMAGE_SIZE = 25 * 1024 * 1024  # 25 MB
 MAX_VIDEO_SIZE = 100 * 1024 * 1024  # 100 MB
 
-BUCKET_PROD = "transit-uploads-production"
-BUCKET_STAGING = "transit-uploads-staging"
-URL_PROD = "https://img.transitapp.com"
-URL_STAGING = "https://img-staging.transitapp.com"
+BUCKET = "image-upload-cli-tool"
+BASE_URL = "https://img.transitapp.com"
 
 OP_VAULT = "Shared"
-OP_ITEM_PROD = "image-upload-transit Service Account (Production)"
-OP_ITEM_STAGING = "image-upload-transit Service Account (Staging)"
+OP_ITEM = "image-upload-transit Service Account (Production)"
 
 
 class CredentialsError(Exception):
@@ -65,11 +62,9 @@ def check_op_cli() -> None:
         raise CredentialsError("Not signed in to 1Password. Run: op signin")
 
 
-def get_credentials(is_staging: bool = False, force_refresh: bool = False) -> dict:
+def get_credentials(force_refresh: bool = False) -> dict:
     """Fetch credentials from 1Password, caching to file."""
-    env_name = "staging" if is_staging else "production"
-    credentials_file = CONFIG_DIR / f"credentials-{env_name}.json"
-    op_item = OP_ITEM_STAGING if is_staging else OP_ITEM_PROD
+    credentials_file = CONFIG_DIR / "credentials.json"
 
     if not force_refresh and credentials_file.exists():
         with open(credentials_file) as f:
@@ -78,7 +73,7 @@ def get_credentials(is_staging: bool = False, force_refresh: bool = False) -> di
     check_op_cli()
 
     result = subprocess.run(
-        ["op", "item", "get", op_item, "--vault", OP_VAULT, "--format", "json"],
+        ["op", "item", "get", OP_ITEM, "--vault", OP_VAULT, "--format", "json"],
         capture_output=True,
         text=True,
     )
@@ -192,7 +187,7 @@ def get_access_token(credentials: dict) -> str:
         raise CredentialsError(f"Failed to obtain access token: {e}")
 
 
-def upload_file(filepath: str, bucket: str, base_url: str, credentials: dict) -> str:
+def upload_file(filepath: str, credentials: dict) -> str:
     """Validate file, generate short ID, upload to GCS, return URL."""
     path, ext = validate_file(filepath)
     short_id = uuid.uuid4().hex[:8]
@@ -208,7 +203,7 @@ def upload_file(filepath: str, bucket: str, base_url: str, credentials: dict) ->
         file_data = f.read()
 
     upload_url = (
-        f"https://storage.googleapis.com/upload/storage/v1/b/{bucket}/o"
+        f"https://storage.googleapis.com/upload/storage/v1/b/{BUCKET}/o"
         f"?uploadType=media&name={urllib.parse.quote(object_name)}"
     )
 
@@ -226,7 +221,7 @@ def upload_file(filepath: str, bucket: str, base_url: str, credentials: dict) ->
     except urllib.error.URLError as e:
         raise ValueError(f"Upload failed: {e}")
 
-    return f"{base_url}/{object_name}"
+    return f"{BASE_URL}/{object_name}"
 
 
 def main() -> int:
@@ -238,7 +233,6 @@ def main() -> int:
 Examples:
   %(prog)s image.png                    Upload a single image
   %(prog)s *.jpg                        Upload multiple images
-  %(prog)s -s screenshot.png            Upload to staging environment
   %(prog)s --json photo.jpg             Output result as JSON (for scripting/agents)
 
 JSON Output Format (--json):
@@ -252,7 +246,6 @@ Size limits: 25MB for images, 100MB for videos.
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("files", nargs="*", help="Files to upload")
-    parser.add_argument("-s", "--staging", action="store_true", help="Use staging environment")
     parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {VERSION}")
     parser.add_argument("--json", action="store_true", help="Output results as JSON (one object per line, for scripting/agents)")
     parser.add_argument("--refresh-credentials", action="store_true", help="Force re-fetch credentials from 1Password")
@@ -274,12 +267,11 @@ Size limits: 25MB for images, 100MB for videos.
 
     if args.refresh_credentials and not args.files:
         try:
-            get_credentials(is_staging=args.staging, force_refresh=True)
-            env_name = "staging" if args.staging else "production"
+            get_credentials(force_refresh=True)
             if args.json:
-                print(json.dumps({"action": "refresh_credentials", "environment": env_name, "success": True}))
+                print(json.dumps({"action": "refresh_credentials", "success": True}))
             else:
-                success(f"Credentials refreshed for {env_name}")
+                success("Credentials refreshed")
             return 0
         except CredentialsError as e:
             if args.json:
@@ -292,11 +284,8 @@ Size limits: 25MB for images, 100MB for videos.
         parser.print_help()
         return 1
 
-    bucket = BUCKET_STAGING if args.staging else BUCKET_PROD
-    base_url = URL_STAGING if args.staging else URL_PROD
-
     try:
-        credentials = get_credentials(is_staging=args.staging, force_refresh=args.refresh_credentials)
+        credentials = get_credentials(force_refresh=args.refresh_credentials)
     except CredentialsError as e:
         if args.json:
             print(json.dumps({"error": str(e), "success": False}))
@@ -307,7 +296,7 @@ Size limits: 25MB for images, 100MB for videos.
     exit_code = 0
     for filepath in args.files:
         try:
-            url = upload_file(filepath, bucket, base_url, credentials)
+            url = upload_file(filepath, credentials)
             output_result(filepath, url=url)
         except ValueError as e:
             output_result(filepath, err=str(e))

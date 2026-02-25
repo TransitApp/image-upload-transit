@@ -17,9 +17,6 @@ image-upload-transit screenshot.png
 
 # Upload multiple files
 image-upload-transit photo1.jpg photo2.png video.mp4
-
-# Upload to staging
-image-upload-transit --staging debug-screenshot.png
 ```
 
 ## Supported Formats
