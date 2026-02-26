@@ -49,5 +49,5 @@ rm /tmp/prod-key.json
 
 ```bash
 image-upload-transit ~/Desktop/test.png
-# Should return: https://img.transitapp.com/<id>.png
+# Should return: https://storage.googleapis.com/image-upload-cli-tool/<id>.png
 ```

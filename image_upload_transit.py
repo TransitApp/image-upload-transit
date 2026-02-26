@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI tool for uploading images/videos to GCS with short transitapp.com URLs."""
+"""CLI tool for uploading images/videos to GCS."""
 
 import argparse
 import base64
@@ -17,7 +17,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 CONFIG_DIR = Path.home() / ".config" / "image-upload-transit"
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".heic", ".bmp", ".tiff", ".tif", ".svg"}
@@ -28,8 +28,9 @@ MAX_IMAGE_SIZE = 25 * 1024 * 1024  # 25 MB
 MAX_VIDEO_SIZE = 100 * 1024 * 1024  # 100 MB
 
 BUCKET = "image-upload-cli-tool"
-BASE_URL = "https://img.transitapp.com"
+BASE_URL = f"https://storage.googleapis.com/{BUCKET}"
 
+OP_ACCOUNT = "transit.1password.com"
 OP_VAULT = "Shared"
 OP_ITEM = "image-upload-transit Service Account (Production)"
 
@@ -57,7 +58,7 @@ def check_op_cli() -> None:
     except subprocess.CalledProcessError:
         raise CredentialsError("1Password CLI check failed")
 
-    result = subprocess.run(["op", "account", "list"], capture_output=True)
+    result = subprocess.run(["op", "account", "list", "--account", OP_ACCOUNT], capture_output=True)
     if result.returncode != 0 or not result.stdout.strip():
         raise CredentialsError("Not signed in to 1Password. Run: op signin")
 
@@ -73,7 +74,7 @@ def get_credentials(force_refresh: bool = False) -> dict:
     check_op_cli()
 
     result = subprocess.run(
-        ["op", "item", "get", OP_ITEM, "--vault", OP_VAULT, "--format", "json"],
+        ["op", "item", "get", OP_ITEM, "--vault", OP_VAULT, "--account", OP_ACCOUNT, "--format", "json"],
         capture_output=True,
         text=True,
     )
@@ -227,7 +228,7 @@ def upload_file(filepath: str, credentials: dict) -> str:
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="Upload images/videos to GCS with short transitapp.com URLs",
+        description="Upload images/videos to GCS",
         prog="image-upload-transit",
         epilog="""
 Examples:
@@ -236,7 +237,7 @@ Examples:
   %(prog)s --json photo.jpg             Output result as JSON (for scripting/agents)
 
 JSON Output Format (--json):
-  Success: {"file": "image.png", "url": "https://img.transitapp.com/abc123.png", "success": true}
+  Success: {"file": "image.png", "url": "https://storage.googleapis.com/image-upload-cli-tool/abc123.png", "success": true}
   Error:   {"file": "bad.txt", "error": "Unsupported file type", "success": false}
   Multiple files produce one JSON object per line (JSONL format).
 
